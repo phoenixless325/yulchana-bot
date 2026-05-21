@@ -8,7 +8,20 @@ function triggerPattern(word: string): RegExp {
   return new RegExp(`(?<![\\p{L}\\p{N}])${word}(?![\\p{L}\\p{N}])`, 'iu');
 }
 
-const CEM_PATTERN = triggerPattern('цем');
+const REPLY_TRIGGERS: Array<{ pattern: RegExp; action: string }> = [
+  { pattern: triggerPattern('цем'), action: 'засосал' },
+  { pattern: triggerPattern('ебнуть'), action: 'ебнул(а)' },
+  { pattern: triggerPattern('пиздануть'), action: 'пизданул(а)' },
+  { pattern: triggerPattern('ударить'), action: 'ударил(а)' },
+  { pattern: triggerPattern('вьебать'), action: 'вьебал(а)' },
+  { pattern: triggerPattern('обнять'), action: 'нежно обнял(а)' },
+  { pattern: triggerPattern('цемнуть'), action: 'цемнул(а) в щечку' },
+  { pattern: triggerPattern('толкнуть'), action: 'толкнул(а)' },
+  { pattern: triggerPattern('кусь'), action: 'укусил(а)' },
+  { pattern: triggerPattern('пять'), action: 'дал(а) пять' },
+  { pattern: triggerPattern('покормить'), action: 'покормил(а)' },
+];
+
 const BLYA_PATTERN = triggerPattern('бля');
 const YULCHANA_USERNAME = 'yulchana1';
 
@@ -56,21 +69,21 @@ export class BotUpdate implements OnModuleInit {
     if (!message) return;
     if (message.from?.is_bot) return;
 
-    if (
-      message.reply_to_message &&
-      CEM_PATTERN.test(message.text)
-    ) {
-      const triggerLink = userLink(message.from);
-      const repliedLink = userLink(message.reply_to_message.from);
-      try {
-        await ctx.reply(`${triggerLink} засосал ${repliedLink}`, {
-          parse_mode: 'HTML',
-          reply_parameters: { message_id: message.reply_to_message.message_id },
-        });
-      } catch (error) {
-        this.logger.error('Failed to send цем reply', error as Error);
+    if (message.reply_to_message) {
+      const trigger = REPLY_TRIGGERS.find((t) => t.pattern.test(message.text));
+      if (trigger) {
+        const triggerLink = userLink(message.from);
+        const repliedLink = userLink(message.reply_to_message.from);
+        try {
+          await ctx.reply(`${triggerLink} ${trigger.action} ${repliedLink}`, {
+            parse_mode: 'HTML',
+            reply_parameters: { message_id: message.reply_to_message.message_id },
+          });
+        } catch (error) {
+          this.logger.error('Failed to send reply trigger', error as Error);
+        }
+        return;
       }
-      return;
     }
 
     if (BLYA_PATTERN.test(message.text)) {
