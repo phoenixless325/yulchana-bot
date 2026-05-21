@@ -49,6 +49,10 @@ export class BotUpdate implements OnModuleInit {
   constructor(@InjectBot() private readonly bot: Telegraf<Context>) {}
 
   onModuleInit(): void {
+    this.bot.telegram
+      .setMyCommands([{ command: 'help', description: 'Список доступных триггеров' }])
+      .catch((error) => this.logger.error('Failed to set bot commands', error as Error));
+
     this.bot.use(async (ctx, next) => {
       const u = ctx.update;
       const kind = Object.keys(u)
