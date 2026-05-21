@@ -31,6 +31,7 @@ const BLYA_PATTERN = triggerPattern('бля');
 const OKAK_PATTERN = triggerPattern('окак');
 const PLAKAT_PATTERN = triggerPattern('плакать');
 const VSKRYTSYA_PATTERN = triggerPattern('вскрыться');
+const VOSKRESNUT_PATTERN = triggerPattern('воскреснуть');
 const YULCHANA_USERNAME = 'yulchana1';
 
 function escapeHtml(text: string): string {
@@ -112,9 +113,21 @@ export class BotUpdate implements OnModuleInit {
       }
     }
 
+    if (VOSKRESNUT_PATTERN.test(message.text)) {
+      try {
+        await ctx.reply(`${userLink(message.from)} воскрес(ла) ☦️`, {
+          parse_mode: 'HTML',
+          reply_parameters: { message_id: message.message_id },
+        });
+      } catch (error) {
+        this.logger.error('Failed to send воскреснуть reply', error as Error);
+      }
+      return;
+    }
+
     if (VSKRYTSYA_PATTERN.test(message.text)) {
       try {
-        await ctx.reply(`${userLink(message.from)} покончил с собой ☠️`, {
+        await ctx.reply(`${userLink(message.from)} покончил(а) с собой ☠️`, {
           parse_mode: 'HTML',
           reply_parameters: { message_id: message.message_id },
         });
