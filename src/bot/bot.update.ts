@@ -1,5 +1,5 @@
 import { Logger, OnModuleInit } from '@nestjs/common';
-import { Ctx, InjectBot, On, Update } from 'nestjs-telegraf';
+import { Command, Ctx, InjectBot, On, Update } from 'nestjs-telegraf';
 import { Context, Telegraf } from 'telegraf';
 import { Message } from 'telegraf/typings/core/types/typegram';
 
@@ -8,19 +8,24 @@ function triggerPattern(word: string): RegExp {
   return new RegExp(`(?<![\\p{L}\\p{N}])${word}(?![\\p{L}\\p{N}])`, 'iu');
 }
 
-const REPLY_TRIGGERS: Array<{ pattern: RegExp; action: string }> = [
-  { pattern: triggerPattern('цем'), action: 'засосал' },
-  { pattern: triggerPattern('ебнуть'), action: 'ебнул(а)' },
-  { pattern: triggerPattern('пиздануть'), action: 'пизданул(а)' },
-  { pattern: triggerPattern('ударить'), action: 'ударил(а)' },
-  { pattern: triggerPattern('вьебать'), action: 'вьебал(а)' },
-  { pattern: triggerPattern('обнять'), action: 'нежно обнял(а)' },
-  { pattern: triggerPattern('цемнуть'), action: 'цемнул(а) в щечку' },
-  { pattern: triggerPattern('толкнуть'), action: 'толкнул(а)' },
-  { pattern: triggerPattern('кусь'), action: 'укусил(а)' },
-  { pattern: triggerPattern('пять'), action: 'дал(а) пять' },
-  { pattern: triggerPattern('покормить'), action: 'покормил(а)' },
+const REPLY_TRIGGERS: Array<{ word: string; action: string }> = [
+  { word: 'цем', action: 'засосал' },
+  { word: 'ебнуть', action: 'ебнул(а)' },
+  { word: 'пиздануть', action: 'пизданул(а)' },
+  { word: 'ударить', action: 'ударил(а)' },
+  { word: 'вьебать', action: 'вьебал(а)' },
+  { word: 'обнять', action: 'нежно обнял(а)' },
+  { word: 'цемнуть', action: 'цемнул(а) в щечку' },
+  { word: 'толкнуть', action: 'толкнул(а)' },
+  { word: 'кусь', action: 'укусил(а)' },
+  { word: 'пять', action: 'дал(а) пять' },
+  { word: 'покормить', action: 'покормил(а)' },
 ];
+
+const COMPILED_REPLY_TRIGGERS = REPLY_TRIGGERS.map((t) => ({
+  pattern: triggerPattern(t.word),
+  action: t.action,
+}));
 
 const BLYA_PATTERN = triggerPattern('бля');
 const YULCHANA_USERNAME = 'yulchana1';
@@ -63,6 +68,20 @@ export class BotUpdate implements OnModuleInit {
     });
   }
 
+  @Command('help')
+  async onHelp(@Ctx() ctx: Context): Promise<void> {
+    const lines = REPLY_TRIGGERS.map((t) => `<code>${t.word}</code> — ${t.action}`);
+    const text = [
+      'Триггеры (в реплае на сообщение):',
+      ...lines,
+    ].join('\n');
+    try {
+      await ctx.reply(text, { parse_mode: 'HTML' });
+    } catch (error) {
+      this.logger.error('Failed to send help reply', error as Error);
+    }
+  }
+
   @On('text')
   async onText(@Ctx() ctx: Context): Promise<void> {
     const message = ctx.message as Message.TextMessage | undefined;
@@ -70,7 +89,7 @@ export class BotUpdate implements OnModuleInit {
     if (message.from?.is_bot) return;
 
     if (message.reply_to_message) {
-      const trigger = REPLY_TRIGGERS.find((t) => t.pattern.test(message.text));
+      const trigger = COMPILED_REPLY_TRIGGERS.find((t) => t.pattern.test(message.text));
       if (trigger) {
         const triggerLink = userLink(message.from);
         const repliedLink = userLink(message.reply_to_message.from);
