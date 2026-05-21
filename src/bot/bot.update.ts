@@ -28,6 +28,7 @@ const COMPILED_REPLY_TRIGGERS = REPLY_TRIGGERS.map((t) => ({
 }));
 
 const BLYA_PATTERN = triggerPattern('бля');
+const OKAK_PATTERN = triggerPattern('окак');
 const YULCHANA_USERNAME = 'yulchana1';
 
 function escapeHtml(text: string): string {
@@ -107,6 +108,17 @@ export class BotUpdate implements OnModuleInit {
         }
         return;
       }
+    }
+
+    if (OKAK_PATTERN.test(message.text)) {
+      try {
+        await ctx.reply('отак', {
+          reply_parameters: { message_id: message.message_id },
+        });
+      } catch (error) {
+        this.logger.error('Failed to send окак reply', error as Error);
+      }
+      return;
     }
 
     if (BLYA_PATTERN.test(message.text)) {
