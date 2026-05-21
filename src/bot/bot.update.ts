@@ -9,7 +9,7 @@ function triggerPattern(word: string): RegExp {
 }
 
 const REPLY_TRIGGERS: Array<{ word: string; action: string }> = [
-  { word: 'цем', action: 'засосал' },
+  { word: 'цем', action: 'засосал(а)' },
   { word: 'ебнуть', action: 'ебнул(а)' },
   { word: 'пиздануть', action: 'пизданул(а)' },
   { word: 'ударить', action: 'ударил(а)' },
