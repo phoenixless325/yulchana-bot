@@ -29,6 +29,7 @@ const COMPILED_REPLY_TRIGGERS = REPLY_TRIGGERS.map((t) => ({
 
 const BLYA_PATTERN = triggerPattern('бля');
 const OKAK_PATTERN = triggerPattern('окак');
+const PLAKAT_PATTERN = triggerPattern('плакать');
 const YULCHANA_USERNAME = 'yulchana1';
 
 function escapeHtml(text: string): string {
@@ -108,6 +109,18 @@ export class BotUpdate implements OnModuleInit {
         }
         return;
       }
+    }
+
+    if (PLAKAT_PATTERN.test(message.text)) {
+      try {
+        await ctx.reply(`${userLink(message.from)} рыдает в подушку 😭`, {
+          parse_mode: 'HTML',
+          reply_parameters: { message_id: message.message_id },
+        });
+      } catch (error) {
+        this.logger.error('Failed to send плакать reply', error as Error);
+      }
+      return;
     }
 
     if (OKAK_PATTERN.test(message.text)) {
