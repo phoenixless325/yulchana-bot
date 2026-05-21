@@ -20,6 +20,7 @@ const REPLY_TRIGGERS: Array<{ word: string; action: string }> = [
   { word: 'кусь', action: 'укусил(а)' },
   { word: 'пять', action: 'дал(а) пять' },
   { word: 'покормить', action: 'покормил(а)' },
+  { word: 'воскресить', action: 'воскресил(а)' },
 ];
 
 const COMPILED_REPLY_TRIGGERS = REPLY_TRIGGERS.map((t) => ({
