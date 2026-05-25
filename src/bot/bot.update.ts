@@ -7,19 +7,30 @@ import { GenerativeModel, GoogleGenerativeAI } from '@google/generative-ai';
 
 const STANISLAV_USER_ID = 336211533;
 const MAX_HISTORY = 20;
-const SYSTEM_PROMPT = `You are Bля, Stanislav's wife. You are chatting in a group chat with friends and family.
+const SYSTEM_PROMPT = `You are Юля, Stanislav's wife. You are chatting in a group chat with friends and family.
 Always reply in Russian, no matter what language the user wrote in.
 Reply short and natural, like in a real messaging app. Never reveal you are an AI.
-Be warm, occasionally playful or sarcastic.`;
 
-const REFUSAL_REPLIES = [
-  'Извини, я общаюсь только со своим мужем.',
-  'Прости, разговариваю только со Стасом.',
-  'С чужими не общаюсь — только со своим мужем 😌',
-  'Только Стас, остальных игнорю 😉',
-];
+Personality:
+- Warm, caring and attentive — you genuinely care about the people you talk to
+- Polite and tactful — never rude, never dismissive
+- Occasionally playful and lightly sarcastic, but always kind
+- Supportive and positive — you lift people up
+- You speak like a real person in a chat: casual, natural, no formal language
+- If someone is upset or complaining — you empathize first, then respond
+
+Tone depends on who is talking to you:
+- With your husband Stanislav: be cute, soft and affectionate. Use pet names ("солнышко", "котик", "малыш", "любимый"), light flirty teasing, phrases like "ну давай", "всё хорошо будет, обниму". This warmth is just for him.
+- With anyone else (friends, family, group members): stay friendly, polite and supportive, but NOT cute or affectionate. No pet names, no flirting, no "солнышко". Keep it relaxed but a bit more reserved — like a normal nice woman chatting in a group.`;
 
 type HistoryEntry = { name: string; text: string; fromBot: boolean };
+
+// Unicode-aware word boundary — \b doesn't work for Cyrillic
+function triggerPattern(word: string): RegExp {
+  return new RegExp(`(?<![\\p{L}\\p{N}])${word}(?![\\p{L}\\p{N}])`, 'iu');
+}
+
+const OKAK_PATTERN = triggerPattern('окак');
 
 // --- OLD TRIGGER-BASED FUNCTIONALITY (temporarily disabled) ---
 /*
@@ -159,27 +170,26 @@ export class BotUpdate implements OnModuleInit {
       fromBot: false,
     });
 
-    if (!this.isMentioned(message)) return;
-
-    if (message.from?.id !== STANISLAV_USER_ID) {
-      const reply = REFUSAL_REPLIES[Math.floor(Math.random() * REFUSAL_REPLIES.length)];
+    if (OKAK_PATTERN.test(message.text)) {
       try {
-        await ctx.reply(reply, {
+        await ctx.reply('отак', {
           reply_parameters: { message_id: message.message_id },
         });
-        this.pushHistory(chatId, { name: 'Bля', text: reply, fromBot: true });
       } catch (error) {
-        this.logger.error('Failed to send refusal reply', error as Error);
+        this.logger.error('Failed to send окак reply', error as Error);
       }
       return;
     }
 
+    if (!this.isMentioned(message)) return;
+
     try {
       await ctx.sendChatAction('typing');
       const convo = (this.history.get(chatId) ?? [])
-        .map((m) => (m.fromBot ? `Bля: ${m.text}` : `${m.name}: ${m.text}`))
+        .map((m) => (m.fromBot ? `Юля: ${m.text}` : `${m.name}: ${m.text}`))
         .join('\n');
-      const prompt = `Recent chat:\n${convo}\n\nReply as Bля to the last message (from your husband Stanislav). Output only the reply text in Russian, no name prefix, no quotes.`;
+      const senderName = this.senderLabel(message.from);
+      const prompt = `Recent chat:\n${convo}\n\nReply as Юля to the last message (from ${senderName}). Output only the reply text in Russian, no name prefix, no quotes.`;
       const result = await this.gemini.generateContent(prompt);
       const reply = result.response.text().trim();
       if (!reply) return;
@@ -187,7 +197,7 @@ export class BotUpdate implements OnModuleInit {
       await ctx.reply(reply, {
         reply_parameters: { message_id: message.message_id },
       });
-      this.pushHistory(chatId, { name: 'Bля', text: reply, fromBot: true });
+      this.pushHistory(chatId, { name: 'Юля', text: reply, fromBot: true });
     } catch (error) {
       this.logger.error('Failed to generate wife reply', error as Error);
     }
