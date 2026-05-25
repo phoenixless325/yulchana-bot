@@ -85,10 +85,12 @@ export class BotUpdate implements OnModuleInit {
     if (!apiKey) {
       throw new Error('GEMINI_API_KEY is not set');
     }
+    const modelName = this.config.get<string>('GEMINI_MODEL') ?? 'gemini-2.0-flash';
     this.gemini = new GoogleGenerativeAI(apiKey).getGenerativeModel({
-      model: 'gemini-2.0-flash',
+      model: modelName,
       systemInstruction: SYSTEM_PROMPT,
     });
+    this.logger.log(`Using Gemini model: ${modelName}`);
 
     try {
       const me = await this.bot.telegram.getMe();
