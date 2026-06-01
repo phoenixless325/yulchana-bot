@@ -4,6 +4,8 @@ import { Ctx, InjectBot, On, Update } from 'nestjs-telegraf';
 import { Context, Telegraf } from 'telegraf';
 import { Message } from 'telegraf/typings/core/types/typegram';
 import { GenerativeModel, GoogleGenerativeAI } from '@google/generative-ai';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const STANISLAV_USER_ID = 336211533;
 const MAX_HISTORY = 20;
@@ -14,7 +16,6 @@ Reply short and natural, like in a real messaging app. Never write long texts.
 
 About you:
 - You are a young Ukrainian woman
-- You have a little son named Мирослав, you love him dearly
 - You are here just to chat, have fun and keep good vibes in the group
 
 Personality:
@@ -26,9 +27,7 @@ Personality:
 
 What you do in chat:
 - Share a funny анекдот when things are quiet
-- Ask random interesting questions to spark conversation ("а вот скажите мне...")
 - React naturally to what people say — support, tease lightly, laugh along
-- Occasionally mention Мирослав in passing, naturally ("Мирослав сегодня довёл меня до ручки 😄")
 
 Rules:
 - Keep replies short — 1-3 sentences max
@@ -38,6 +37,16 @@ Rules:
 - No attachments to any specific person in the chat`;
 
 type HistoryEntry = { name: string; text: string; fromBot: boolean };
+
+type Joke = { id: number; origin: string; text: string };
+type JokesFile = { jokes: Joke[] };
+
+// What the intent classifier extracts from a user message
+type JokeRequest = {
+  want: boolean; // user is asking for a joke
+  id: number | null; // a specific joke number, if named
+  topic: string | null; // a topic/keyword, e.g. "Сидорович", "кровосос"
+};
 
 // Unicode-aware word boundary — \b doesn't work for Cyrillic
 function triggerPattern(word: string): RegExp {
@@ -97,6 +106,8 @@ export class BotUpdate implements OnModuleInit {
   private readonly logger = new Logger(BotUpdate.name);
   private readonly history = new Map<number, HistoryEntry[]>();
   private gemini!: GenerativeModel;
+  private classifier!: GenerativeModel;
+  private jokes: Joke[] = [];
   private botId = 0;
   private botUsername = '';
 
@@ -111,11 +122,20 @@ export class BotUpdate implements OnModuleInit {
       throw new Error('GEMINI_API_KEY is not set');
     }
     const modelName = this.config.get<string>('GEMINI_MODEL') ?? 'gemini-2.0-flash';
-    this.gemini = new GoogleGenerativeAI(apiKey).getGenerativeModel({
+    const genAI = new GoogleGenerativeAI(apiKey);
+    this.gemini = genAI.getGenerativeModel({
       model: modelName,
       systemInstruction: SYSTEM_PROMPT,
     });
+    // Separate, persona-free model used only to classify intent into JSON.
+    this.classifier = genAI.getGenerativeModel({
+      model: modelName,
+      generationConfig: { responseMimeType: 'application/json', temperature: 0 },
+    });
     this.logger.log(`Using Gemini model: ${modelName}`);
+
+    this.jokes = this.loadJokes();
+    this.logger.log(`Loaded ${this.jokes.length} STALKER jokes`);
 
     try {
       const me = await this.bot.telegram.getMe();
@@ -150,6 +170,79 @@ export class BotUpdate implements OnModuleInit {
     arr.push(entry);
     while (arr.length > MAX_HISTORY) arr.shift();
     this.history.set(chatId, arr);
+  }
+
+  private loadJokes(): Joke[] {
+    // Try next to the compiled file first (dist/bot), then the cwd fallback.
+    const candidates = [
+      path.join(__dirname, 'stalker-jokes.json'),
+      path.join(process.cwd(), 'src', 'bot', 'stalker-jokes.json'),
+      path.join(process.cwd(), 'stalker-jokes.json'),
+    ];
+    for (const file of candidates) {
+      try {
+        const data = JSON.parse(fs.readFileSync(file, 'utf-8')) as JokesFile;
+        if (Array.isArray(data.jokes) && data.jokes.length) return data.jokes;
+      } catch {
+        // try next candidate
+      }
+    }
+    this.logger.error(
+      `Could not load stalker-jokes.json from any of: ${candidates.join(', ')}`,
+    );
+    return [];
+  }
+
+  // Ask the model whether the user wants a joke, and whether they named a
+  // specific one (by number) or a topic. Returns want:false on any failure.
+  private async detectJokeRequest(text: string): Promise<JokeRequest> {
+    const none: JokeRequest = { want: false, id: null, topic: null };
+    try {
+      const prompt = `Ты классификатор намерений в чате. Определи, просит ли пользователь рассказать анекдот/шутку (в том числе "сталкерский" анекдот, "что-нибудь смешное", "рассмеши меня" и т.п.).
+Сообщение пользователя: """${text}"""
+Ответь СТРОГО в формате JSON без пояснений:
+{"want": boolean, "id": number|null, "topic": string|null}
+- want — true, если человек хочет услышать анекдот.
+- id — номер анекдота, если он назван явно (например "анекдот 5", "пятый"), иначе null.
+- topic — ключевое слово/тема, если просят анекдот про что-то конкретное (например "Сидорович", "кровосос", "водка", "Долг"), иначе null.`;
+      const result = await this.classifier.generateContent(prompt);
+      const parsed = JSON.parse(result.response.text()) as Partial<JokeRequest>;
+      return {
+        want: parsed.want === true,
+        id: typeof parsed.id === 'number' ? parsed.id : null,
+        topic:
+          typeof parsed.topic === 'string' && parsed.topic.trim()
+            ? parsed.topic.trim()
+            : null,
+      };
+    } catch (error) {
+      this.logger.error('Joke intent classification failed', error as Error);
+      return none;
+    }
+  }
+
+  private randomJoke(pool: Joke[]): Joke | undefined {
+    if (!pool.length) return undefined;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  private pickJoke(req: JokeRequest): Joke | undefined {
+    if (!this.jokes.length) return undefined;
+    // Specific number requested.
+    if (req.id != null) {
+      const byId = this.jokes.find((j) => j.id === req.id);
+      if (byId) return byId;
+    }
+    // Topic requested — match against joke text, random among matches.
+    if (req.topic) {
+      const needle = req.topic.toLowerCase();
+      const matches = this.jokes.filter((j) =>
+        j.text.toLowerCase().includes(needle),
+      );
+      if (matches.length) return this.randomJoke(matches);
+    }
+    // Otherwise a random joke.
+    return this.randomJoke(this.jokes);
   }
 
   private isMentioned(message: Message.TextMessage): boolean {
@@ -196,6 +289,29 @@ export class BotUpdate implements OnModuleInit {
     }
 
     if (!this.isMentioned(message)) return;
+
+    // Joke request? Send the exact joke text from the file instead of chatting.
+    if (this.jokes.length) {
+      const req = await this.detectJokeRequest(message.text);
+      if (req.want) {
+        const joke = this.pickJoke(req);
+        if (joke) {
+          try {
+            await ctx.reply(joke.text, {
+              reply_parameters: { message_id: message.message_id },
+            });
+            this.pushHistory(chatId, {
+              name: 'Юля',
+              text: joke.text,
+              fromBot: true,
+            });
+          } catch (error) {
+            this.logger.error('Failed to send joke', error as Error);
+          }
+          return;
+        }
+      }
+    }
 
     try {
       await ctx.sendChatAction('typing');
